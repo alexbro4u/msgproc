@@ -4,14 +4,17 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"log"
 	"os"
+	"time"
 )
 
 type Config struct {
 	Env string `yaml:"env" env-default:"local"`
 
 	HTTPServer struct {
-		Host string `yaml:"host"  env-default:"localhost"`
-		Port string `yaml:"port" env-default:"8080"`
+		Host         string        `yaml:"host"  env-default:"localhost:8080"`
+		ReadTimeout  time.Duration `yaml:"read_timeout" env-default:"5s"`
+		WriteTimeout time.Duration `yaml:"write_timeout" env-default:"5s"`
+		IdleTimeout  time.Duration `yaml:"idle_timeout" env-default:"30s"`
 	} `yaml:"http_server"`
 
 	Postgres struct {
@@ -30,6 +33,8 @@ type Config struct {
 		MigrationsPath  string `yaml:"migrations_path" env-default:"./migrations"`
 		MigrationsTable string `yaml:"migrations_table" env-required:"true"`
 	} `yaml:"migrator"`
+
+	CtxTimeout time.Duration `yaml:"ctx_timeout" env-default:"5s"`
 }
 
 func LoadConfig(configPath string, cfg interface{}) {

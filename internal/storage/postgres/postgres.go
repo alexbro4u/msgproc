@@ -71,8 +71,8 @@ func (s *Storage) SaveMsg(
 		INSERT INTO messages
 		    (content)
 		VALUES
-		    (:content)
-		RETURNING id into :id
+		    ($1)
+		RETURNING id
 	`)
 	if err != nil {
 		finalErr = fmt.Errorf("%s: %w", op, err)
@@ -86,11 +86,10 @@ func (s *Storage) SaveMsg(
 	}()
 
 	var msgID int64
-	_, err = stmt.ExecContext(
+	err = stmt.QueryRowContext(
 		ctx,
-		sql.Named("content", msg),
-		sql.Named("id", sql.Out{Dest: &msgID}),
-	)
+		msg,
+	).Scan(&msgID)
 	if err != nil {
 		finalErr = fmt.Errorf("%s: %w", op, err)
 		return 0, finalErr
@@ -203,6 +202,128 @@ func (s *Storage) AverageMessageLength(ctx context.Context) (float64, error) {
 	return avgLength, nil
 }
 
-func (s *Storage) Close() error {
-	return s.db.Close()
+func (s *Storage) UpdateMsgStatus(ctx context.Context, msgID int64, status string) error {
+	const op = "internal/storage/postgres.UpdateMsgStatus"
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	var finalErr error
+	defer func() {
+		if p := recover(); p != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, rollbackErr)
+			}
+			panic(p)
+		} else if finalErr != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, rollbackErr)
+			}
+		} else {
+			commitErr := tx.Commit()
+			if commitErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, commitErr)
+			}
+		}
+	}()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE
+		    messages
+		SET 
+			status = $1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE 
+		    id = $2
+	`)
+	if err != nil {
+		finalErr = fmt.Errorf("%s: %w", op, err)
+		return finalErr
+	}
+	defer func() {
+		stmtErr := stmt.Close()
+		if stmtErr != nil {
+			finalErr = fmt.Errorf("%s: %w", op, stmtErr)
+		}
+	}()
+
+	_, err = stmt.ExecContext(
+		ctx,
+		status,
+		msgID,
+	)
+	if err != nil {
+		finalErr = fmt.Errorf("%s: %w", op, err)
+
+		return finalErr
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateMsg(ctx context.Context, msgID int64, msg string) error {
+	const op = "internal/storage/postgres.UpdateMsg"
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	var finalErr error
+	defer func() {
+		if p := recover(); p != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, rollbackErr)
+			}
+			panic(p)
+		} else if finalErr != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, rollbackErr)
+			}
+		} else {
+			commitErr := tx.Commit()
+			if commitErr != nil {
+				finalErr = fmt.Errorf("%s: %w", op, commitErr)
+			}
+		}
+	}()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE
+		    messages
+		SET 
+			content = $1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE 
+		    id = $2
+	`)
+	if err != nil {
+		finalErr = fmt.Errorf("%s: %w", op, err)
+		return finalErr
+	}
+	defer func() {
+		stmtErr := stmt.Close()
+		if stmtErr != nil {
+			finalErr = fmt.Errorf("%s: %w", op, stmtErr)
+		}
+	}()
+
+	_, err = stmt.ExecContext(
+		ctx,
+		msg,
+		msgID,
+	)
+	if err != nil {
+		finalErr = fmt.Errorf("%s: %w", op, err)
+
+		return finalErr
+	}
+
+	return nil
 }
